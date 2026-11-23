@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Загрузка в datalab</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 30px auto; color: #222; }
+  .btn { padding: 8px 16px; margin-right: 10px; cursor: pointer; }
+  .row { margin: 8px 0; display: flex; align-items: center; gap: 10px; }
+  .bar-wrap { background: #eee; border-radius: 4px; height: 16px; flex: 1; }
+  .bar { background: #3b82f6; height: 100%; width: 0; border-radius: 4px; transition: width .15s; }
+  .name { width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat { width: 220px; font-size: 12px; color: #666; }
+  .err .bar { background: #ef4444; }
+  .done .bar { background: #22c55e; }
+  #summary { margin-top: 16px; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>Загрузка файлов в datalab</h2>
+
+<input type="file" id="pickFiles" multiple class="btn">
+<label class="btn">Выбрать папку
+  <input type="file" id="pickFolder" webkitdirectory multiple style="display:none">
+</label>
+<button class="btn" onclick="startQueue()" id="startBtn" disabled>Начать загрузку</button>
+
+<div id="list"></div>
+<div id="summary"></div>
+
+<script>
+const MAX_ATTEMPTS = 5;
+const MAX_CHUNK = 32 * 1024 * 1024;
+
+let queue = [];
+let running = false;
+let chunkSize = 4 * 1024 * 1024;
+
+fetch("/config")
+  .then(r => r.json())
+  .then(c => {
+    if (c.chunk_size > 0) chunkSize = Math.min(c.chunk_size, MAX_CHUNK);
+  })
+  .catch(() => {});
+
+const fileInput = document.getElementById("pickFiles");
+const folderInput = document.getElementById("pickFolder");
+fileInput.onchange = e => addFiles(e.target.files);
+folderInput.onchange = e => addFiles(e.target.files);
+
+function addFiles(fileList) {
+  for (const f of fileList) {
+    const rel = f.webkitRelativePath || f.name;
+    if (queue.some(i => i.rel === rel)) continue;
+    queue.push({ file: f, rel, sent: 0, status: "wait", err: "", el: null });
+  }
+  render();
+}
+
+function render() {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  for (const item of queue) {
+    const row = document.createElement("div");
+    row.className = "row " + item.status;
+
+    const name = document.createElement("div");
+    name.className = "name";
+    name.title = item.rel;
+    name.textContent = `${item.rel} (${fmt(item.file.size)})`;
+
+    const wrap = document.createElement("div");
+    wrap.className = "bar-wrap";
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    wrap.appendChild(bar);
+
+    const stat = document.createElement("div");
+    stat.className = "stat";
+
+    row.append(name, wrap, stat);
+    item.el = { row, bar, stat };
+    list.appendChild(row);
+    updateRow(item);
+  }
+  document.getElementById("startBtn").disabled = queue.length === 0 || running;
+}
+
+function updateRow(item) {
+  if (!item.el) return;
+  const { row, bar, stat } = item.el;
+  row.className = "row " + item.status;
+  const pct = item.file.size ? Math.min(100, 100 * item.sent / item.file.size) : 100;
+  bar.style.width = pct + "%";
+  stat.textContent = statText(item);
+}
+
+function statText(item) {
+  if (item.status === "done") return "ok: загружено";
+  if (item.status === "error") return "ошибка: " + (item.err || "");
+  if (item.status === "run") return `${fmt(item.sent)} / ${fmt(item.file.size)}`;
+  return "в очереди";
+}
+
+function fmt(n) {
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " МБ";
+  if (n >= 1 << 10) return (n / (1 << 10)).toFixed(1) + " КБ";
+  return n + " Б";
+}
+
+async function startQueue() {
+  if (running) return;
+  running = true;
+  render();
+  for (const item of queue) {
+    if (item.status === "done") continue;
+    item.status = "run";
+    item.sent = 0;
+    item.err = "";
+    updateRow(item);
+    try {
+      await uploadOne(item);
+      item.status = "done";
+      item.sent = item.file.size;
+    } catch (e) {
+      item.status = "error";
+      item.err = String((e && e.message) || e);
+    }
+    updateRow(item);
+  }
+  running = false;
+  const done = queue.filter(i => i.status === "done").length;
+  const failed = queue.filter(i => i.status === "error").length;
+  document.getElementById("summary").textContent = `Завершено: ${done}, с ошибками: ${failed}`;
+  render();
+}
+
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const backoff = attempt => Math.min(8000, 500 * Math.pow(2, attempt - 1));
+
+function fatal(message) {
+  const e = new Error(message);
+  e.fatal = true;
+  return e;
+}
+
+async function readJson(r) {
+  try { return await r.json(); } catch (e) { return {}; }
+}
+
+async function beginUpload(item) {
+  const r = await fetch("/api/begin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: item.rel, size: item.file.size }),
+  });
+  const data = await readJson(r);
+  if (!r.ok) {
+    const message = data.error || ("begin: HTTP " + r.status);
+    // 4xx (кроме 408/429) — ошибка запроса, повторять бессмысленно
+    if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) {
+      throw fatal(message);
+    }
+    throw new Error(message);
+  }
+  const offset = Number(data.offset);
+  return Number.isFinite(offset) && offset > 0 ? Math.min(offset, item.file.size) : 0;
+}
+
+// begin может упасть из-за временного обрыва — это не повод сдаваться
+async function beginWithRetry(item) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await beginUpload(item);
+    } catch (e) {
+      if ((e && e.fatal) || attempt >= MAX_ATTEMPTS) throw e;
+      await sleep(backoff(attempt));
+    }
+  }
+}
+
+async function uploadOne(item) {
+  const size = item.file.size;
+
+  // Докачка: сервер сам говорит, сколько у него уже есть.
+  item.sent = await beginWithRetry(item);
+  updateRow(item);
+
+  let attempts = 0;
+  while (item.sent < size) {
+    const end = Math.min(item.sent + chunkSize, size);
+    // file.slice() — браузер отдаёт только кусок, файл целиком в память не читается
+    const piece = item.file.slice(item.sent, end);
+    let message = "";
+
+    try {
+      const r = await fetch("/api/chunk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Path": encodeURIComponent(item.rel),
+          "X-Offset": String(item.sent),
+        },
+        body: piece,
+      });
+      const data = await readJson(r);
+
+      if (r.ok && Number.isFinite(Number(data.size))) {
+        item.sent = Math.min(Number(data.size), size);
+        attempts = 0;
+        updateRow(item);
+        continue;
+      }
+
+      if (r.status === 409 && Number.isFinite(Number(data.size))) {
+        // клиент и сервер разошлись по позиции — продолжаем с фактической
+        const next = Math.min(Number(data.size), size);
+        if (next === item.sent) {
+          attempts += 1;
+          if (attempts > MAX_ATTEMPTS) throw fatal(data.error || "сервер не принимает чанк");
+          await sleep(backoff(attempts));
+        } else {
+          if (next < item.sent) {
+            attempts += 1;
+            if (attempts > MAX_ATTEMPTS) throw fatal("сервер потерял данные, попытки исчерпаны");
+          } else {
+            attempts = 0;
+          }
+          item.sent = next;
+        }
+        updateRow(item);
+        continue;
+      }
+
+      // 4xx (кроме 408/429) ретраить бессмысленно
+      if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) {
+        throw fatal(data.error || ("HTTP " + r.status));
+      }
+      message = data.error || ("HTTP " + r.status);
+    } catch (e) {
+      if (e && e.fatal) throw e;
+      message = String((e && e.message) || e);
+    }
+
+    // Сеть/5xx: ограниченное число попыток, перед повтором сверяем offset.
+    attempts += 1;
+    if (attempts > MAX_ATTEMPTS) {
+      throw fatal(`не удалось загрузить после ${MAX_ATTEMPTS} попыток: ${message}`);
+    }
+    await sleep(backoff(attempts));
+    try {
+      item.sent = await beginWithRetry(item);
+    } catch (e) {
+      if (e && e.fatal) throw e;
+    }
+    updateRow(item);
+  }
+
+  const r = await fetch("/api/end", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: item.rel, size }),
+  });
+  const data = await readJson(r);
+  if (!r.ok) throw fatal(data.error || ("end: HTTP " + r.status));
+}
+</script>
+</body>
+</html>

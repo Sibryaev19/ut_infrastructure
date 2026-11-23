@@ -137,6 +137,7 @@ def fetch_project(
     fresh: bool = False,
     stop_event=None,
     progress=None,
+    phase_cancelled=None,
 ) -> Path:
     """Выгрузка проекта с выбором фаз. Возвращает папку с результатами.
 
@@ -158,9 +159,13 @@ def fetch_project(
     совпасть); fresh=True — стереть прогресс и начать заново; без обоих флагов
     при наличии прогресса будет ошибка с подсказкой (выбор — за пользователем).
     stop_event — кнопка «Стоп» (проверяется между страницами и пачками);
-    progress(phase, done, total) — прогресс для web-интерфейса.
+    progress(phase, done, total, status=None) — прогресс для web-интерфейса,
+    status="done"/"cancelled" — финал фазы; phase_cancelled(phase) — отмена
+    отдельной фазы в процессе: фаза завершается на ближайшей границе,
+    остальные продолжаются.
     """
     phases = _norm_phases(phases, skip_changelog)
+    cancelled = phase_cancelled or (lambda _ph: False)
     if date_field not in DATE_FIELDS:
         raise ValueError(f"date_field: ожидалось одно из {DATE_FIELDS}, получено {date_field!r}")
     if incremental and date_field != "updated":
@@ -265,7 +270,7 @@ def fetch_project(
 
     keys = _run_phases(state, client, out_dir, project_key, cfg, fs,
                        max_issues, phases, pull_comments, date_field,
-                       stop_event, progress, resumed)
+                       stop_event, progress, resumed, phase_cancelled)
 
     # ---------- коммит: из _partial в корень папки ----------
     state.data["phase"] = "commit"
@@ -277,7 +282,11 @@ def fetch_project(
         commit(partial / "issues.jsonl", out_dir / "issues.jsonl")
     if phases in ("both", "changelog"):
         commit(partial / "changelog.jsonl", out_dir / "changelog.jsonl")
-    if pull_comments:
+    # отменённые в процессе комментарии не сохраняются вовсе (честное
+    # отсутствие: метрики с requires=comments покажут «докачай»), а частично
+    # скачанный changelog коммитится — события дедуплицируются по ключу
+    comments_saved = pull_comments and not cancelled("comments")
+    if comments_saved:
         commit(partial / "comments.jsonl", out_dir / "comments.jsonl")
 
     tree = build_tree(_read_jsonl(out_dir / "issues.jsonl"), cfg.custom_fields)
@@ -299,14 +308,14 @@ def fetch_project(
             counts["changelog_events"] = (prev_counts.get("changelog_events", 0)
                                           + state.counts().get("changelog_events", 0))
             counts["changelog_truncated"] = len(state.data.get("truncated", []))
-        if pull_comments:
+        if comments_saved:
             counts["comments"] = (prev_counts.get("comments", 0)
                                   + state.counts().get("comments", 0))
     else:
         if phases in ("both", "changelog") and keys:
             counts["changelog_events"] = state.counts().get("changelog_events", 0)
             counts["changelog_truncated"] = len(state.data.get("truncated", []))
-        if pull_comments and keys:
+        if comments_saved and keys:
             counts["comments"] = state.counts().get("comments", 0)
 
     summary = {
@@ -318,7 +327,7 @@ def fetch_project(
         "date_from": fs.date_from,
         "date_to": fs.date_to,
         "date_field": date_field,
-        "with_comments": pull_comments,
+        "with_comments": comments_saved,
         "resumed_from_checkpoint": resumed,
         "stages": dict(state.data.get("stages_sec", {})),
         "counts": counts,
@@ -333,18 +342,22 @@ def fetch_project(
     log.info("=== Готово за %.1fс: задачи=%d, события changelog=%d%s ===",
              sum(state.data.get("stages_sec", {}).values()), len(keys),
              counts.get("changelog_events", 0),
-             f", комментарии={counts.get('comments', 0)}" if pull_comments else "")
+             f", комментарии={counts.get('comments', 0)}" if comments_saved else "")
     log.info("Результаты: %s", out_dir)
     return out_dir
 
 
 def _run_phases(state, client, out_dir, project_key, cfg, fs,
                 max_issues, phases, pull_comments, date_field,
-                stop_event, progress, resumed) -> list[str]:
+                stop_event, progress, resumed, phase_cancelled) -> list[str]:
     """Фазы выгрузки: задачи -> changelog -> догрузка -> комментарии.
     Возвращает полный список ключей (нужен коммиту). Каждая фаза начинается,
-    только если чекпоинт ещё не за неё и входит в выбранные фазы (phases)."""
+    только если чекпоинт ещё не за неё и входит в выбранные фазы (phases).
+    phase_cancelled(phase) — отмена фазы в процессе: проверяется на тех же
+    границах, что stop_event, фаза помечается cancelled и цикл выходит,
+    следующие фазы работают как обычно."""
 
+    cancelled = phase_cancelled or (lambda _ph: False)
     partial = state.dir
     keys: list[str] = []
     issues_path = partial / "issues.jsonl"
@@ -391,12 +404,17 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                     state.save()
             js.checkpoint(n)
             state.stage("issues", time.monotonic() - t0)
-            state.data["phase"] = "changelog"
-            state.save()
+            if progress:
+                progress("issues", n, total_hint["total"], status="done")
         finally:
             js.close()
     else:
         keys = _read_keys(issues_path)
+    # курсор двигается после фазы (выполнена или пропущена по phases/данным) —
+    # иначе следующие фазы не увидят свой этап и молча пропустятся
+    if state.data["phase"] == "issues":
+        state.data["phase"] = "changelog"
+        state.save()
 
     events = state.counts().get("changelog_events", 0)
     truncated: list[str] = state.data.get("truncated", [])
@@ -414,6 +432,14 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                 if ci < done:
                     continue
                 _stopped(stop_event, f"changelog {ci + 1}/{total_chunks}")
+                if cancelled("changelog"):
+                    if progress:
+                        progress("changelog", min(ci * fs.expand_batch, len(keys)),
+                                 len(keys), status="cancelled")
+                    log.info("Фаза «история изменений» отменена пользователем "
+                             "(%d из %d пачек) — скачанное сохранится, "
+                             "остальное пропускаю", ci, total_chunks)
+                    break
                 for rec in iter_changelog(client, chunk, expand_batch=fs.expand_batch):
                     js.write_record(rec)
                     events += len(rec.get("histories") or [])
@@ -428,8 +454,12 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                     progress("changelog", min((ci + 1) * fs.expand_batch, len(keys)),
                              len(keys))
                 state.save()
+            else:
+                if progress:
+                    progress("changelog", len(keys), len(keys), status="done")
         finally:
             js.close()
+    if state.data["phase"] == "changelog":
         state.data["phase"] = "doload"
         state.save()
 
@@ -442,8 +472,6 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
             log.warning("Эндпоинт /changelog недоступен: %d задач остались с 100 "
                         "последними событиями: %s", len(truncated), truncated[:5])
             state.data["truncated"] = []
-            state.data["phase"] = "comments"
-            state.save()
         else:
             t0 = time.monotonic()
             js = _Jsonl(cl_path, state, "changelog.jsonl", bool(f_c["offset"]))
@@ -452,6 +480,12 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                     if idx < done:
                         continue
                     _stopped(stop_event, f"догрузка {idx + 1}/{len(truncated)}")
+                    if cancelled("doload"):
+                        if progress:
+                            progress("doload", idx, len(truncated), status="cancelled")
+                        log.info("Догрузка историй отменена пользователем "
+                                 "(%d из %d) — остальное пропускаю", idx, len(truncated))
+                        break
                     full = next(iter_changelog_endpoint(client, [key]), None)
                     if full:
                         js.write_record(full)
@@ -462,8 +496,12 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                     if progress:
                         progress("doload", idx + 1, len(truncated))
                     state.save()
+                else:
+                    if progress:
+                        progress("doload", len(truncated), len(truncated), status="done")
             finally:
                 js.close()
+    if state.data["phase"] == "doload":
         state.data["phase"] = "comments"
         state.save()
 
@@ -481,6 +519,14 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                 if ci < done:
                     continue
                 _stopped(stop_event, f"комментарии {ci + 1}/{total_chunks}")
+                if cancelled("comments"):
+                    if progress:
+                        progress("comments", min(ci * fs.expand_batch, len(keys)),
+                                 len(keys), status="cancelled")
+                    log.info("Фаза «комментарии» отменена пользователем "
+                             "(%d из %d пачек) — комментарии не сохраняются, "
+                             "остальное пропускаю", ci, total_chunks)
+                    break
                 for rec in iter_comments(client, chunk, batch_size=fs.expand_batch):
                     js.write_record(rec)
                     n_comments += len(rec.get("comments") or [])
@@ -492,6 +538,9 @@ def _run_phases(state, client, out_dir, project_key, cfg, fs,
                     progress("comments", min((ci + 1) * fs.expand_batch, len(keys)),
                              len(keys))
                 state.save()
+            else:
+                if progress:
+                    progress("comments", len(keys), len(keys), status="done")
         finally:
             js.close()
 

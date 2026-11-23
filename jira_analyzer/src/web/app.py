@@ -19,7 +19,7 @@ from src.components.reports import MAX_ROWS_HTML, payload
 from src.core.config import PROJECT_ROOT, load_env
 from src.core.pipeline import PipelineOptions
 from src.fetch.issues import validate_dates
-from .jobs import get_job, request_stop, snapshot, start_job
+from .jobs import get_job, request_skip, request_stop, snapshot, start_job
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 STATIC_PATH = Path(__file__).parent / "static"
@@ -217,6 +217,20 @@ def job_stop(job_id: str) -> dict:
     if not request_stop(job_id):
         raise HTTPException(409, "Остановить можно только идущую выгрузку")
     return {"stopped": job_id}
+
+
+class SkipRequest(BaseModel):
+    phase: str   # changelog | comments
+
+
+@app.post("/api/job/{job_id}/skip")
+def job_skip(job_id: str, req: SkipRequest) -> dict:
+    """Крестик у полосы фазы: fetch завершит фазу на ближайшей границе,
+    остальные фазы продолжатся."""
+    if not request_skip(job_id, req.phase):
+        raise HTTPException(409, "Отменить фазу нельзя: задание не идёт, "
+                                 "не выгрузка или фаза не отменяется")
+    return {"skipped": req.phase}
 
 
 def _check_project(project: str) -> str:

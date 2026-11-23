@@ -39,9 +39,12 @@ class PipelineOptions:
     resume: bool = False          # продолжить незавершённую выгрузку (_partial)
     fresh: bool = False           # стереть незавершённый прогресс и начать заново
     # Управление из web-задания: событие «Стоп» (fetch проверяет между
-    # страницами/пачками) и колбэк progress(phase, done, total) для UI.
+    # страницами/пачками), колбэк progress(phase, done, total, status=None)
+    # для UI (status: "done"/"cancelled" — финал фазы) и phase_cancelled(phase)
+    # — отмена отдельной фазы в процессе (история/комментарии).
     stop_event: object | None = None
     progress: object | None = None
+    phase_cancelled: object | None = None
     raw_dir: Path | None = None
     out_dir: Path | None = None
 
@@ -61,6 +64,7 @@ def run_fetch(opts: PipelineOptions) -> dict:
         date_field=opts.date_field, incremental=opts.incremental,
         resume=opts.resume, fresh=opts.fresh,
         stop_event=opts.stop_event, progress=opts.progress,
+        phase_cancelled=opts.phase_cancelled,
     )
     return {"project": opts.project, "raw_dir": raw_dir}
 

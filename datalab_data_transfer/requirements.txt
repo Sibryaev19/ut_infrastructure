@@ -1,0 +1,10 @@
+# Зависимости client.py и server.py.
+# Версии — ровно те, на которых прогонялись тесты (.for_agent/test/test_upload.py).
+# server.py уезжает на datalab отдельно: ему ставится та же связка.
+
+fastapi==0.165.0
+uvicorn==0.54.0
+anyio==4.16.0
+pydantic==2.14.4
+httpx==0.28.1
+python-dotenv==1.2.4

@@ -2,9 +2,11 @@
 
 Прогресс — из логов и от fetch-фаз: обработчик перехватывает INFO-записи
 ТОЛЬКО своего потока (параллельные задания не смешивают логи), fetch докладывает
-(фаза, сколько скачано, total) — фронтенд опрашивает /api/job/{id}.
-«Стоп» (request_stop) работает для выгрузок: fetch завершает текущую
-страницу/пачку, сохраняет чекпоинт и выходит со статусом stopped.
+(фаза, сколько скачано, total, финальный статус) — фронтенд опрашивает
+/api/job/{id} и рисует полосы по фазам из job.phases.
+«Стоп» (request_stop) останавливает выгрузку целиком; «крестики»
+(request_skip) отменяют отдельную фазу (история/комментарии) — fetch
+завершает её на ближайшей границе и идёт дальше.
 """
 from __future__ import annotations
 
@@ -56,6 +58,11 @@ class Job:
     stop_event: threading.Event = field(default_factory=threading.Event)
     # {"phase", "done", "total"} — обновляет fetch через колбэк opts.progress
     progress: dict | None = None
+    # состояние фаз для полос web: {phase: {label, done, total, status}} —
+    # status: running | done | cancelled; заполняет тот же колбэк
+    phases: dict = field(default_factory=dict)
+    # отменённые в процессе фазы («крестики»): changelog | comments
+    skip_phases: set = field(default_factory=set)
 
 
 JOBS: dict[str, Job] = {}
@@ -68,6 +75,7 @@ def start_job(opts: PipelineOptions) -> str:
     thread_name = f"job-{job.id}"
     opts.progress = _progress_setter(job)      # fetch докладывает прогресс в задание
     opts.stop_event = job.stop_event           # «Стоп» из web: fetch проверяет между страницами/пачками
+    opts.phase_cancelled = lambda ph: ph in job.skip_phases   # «крестики» фаз
 
     def target() -> None:
         root = logging.getLogger()
@@ -116,15 +124,45 @@ def request_stop(job_id: str) -> bool:
     return True
 
 
+# фазы, которые можно отменить крестиком в процессе (задачи — только «Стоп»)
+SKIPPABLE = ("changelog", "comments")
+
+
+def request_skip(job_id: str, phase: str) -> bool:
+    """Крестик у полосы фазы: fetch завершит фазу на ближайшей границе,
+    остальные продолжатся. True, если команда принята."""
+    if phase not in SKIPPABLE:
+        return False
+    job = JOBS.get(job_id)
+    if job is None or job.status != "running" or not job.opts.fetch_only:
+        return False
+    with _LOCK:
+        job.skip_phases.add(phase)
+    return True
+
+
 def _progress_setter(job: Job):
-    def set_progress(phase: str, done: int, total: int | None) -> None:
-        job.progress = {"phase": PHASE_LABELS.get(phase, phase),
-                        "done": done, "total": total}
+    def set_progress(phase: str, done: int, total: int | None,
+                     status: str | None = None) -> None:
+        with _LOCK:
+            ph = job.phases.get(phase)
+            if ph is None:
+                ph = {"label": PHASE_LABELS.get(phase, phase),
+                      "done": 0, "total": None, "status": "running"}
+                job.phases[phase] = ph
+            ph["done"] = done
+            ph["total"] = total
+            if status:
+                ph["status"] = status
+            job.progress = {"phase": ph["label"], "done": done, "total": total}
     return set_progress
 
 
 def snapshot(job: Job) -> dict:
     opts = job.opts
+    with _LOCK:
+        phases = {p: dict(v) for p, v in job.phases.items()}
+        skipped = set(job.skip_phases)
     return {
         "id": job.id,
         "status": job.status,
@@ -132,6 +170,9 @@ def snapshot(job: Job) -> dict:
         "error": job.error,
         "log": list(job.log),
         "progress": job.progress,
+        # полосы фаз для web + какие крестики ещё доступны
+        "phases": phases,
+        "skippable": [p for p in SKIPPABLE if p not in skipped],
         "stoppable": job.status == "running" and opts.fetch_only,
         "fetch_only": opts.fetch_only,
         "report_ready": job.status == "done" and bool(job.result.get("report_dir")),
