@@ -1,0 +1,11 @@
+# Зависимости сервера на datalab.
+# Версии fastapi/uvicorn/anyio/pydantic — как в datalab_data_transfer/requirements.txt,
+# на которых там уже прогонялись сервисы.
+fastapi==0.165.0
+uvicorn==0.54.0
+anyio==4.16.0
+pydantic==2.14.4
+
+# Тесты (нужны только для локального прогона)
+pytest>=8.2
+httpx==0.28.1
