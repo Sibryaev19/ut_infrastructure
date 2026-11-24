@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Паттерн «start-bash»: запуск только через .venv (его создаёт setup).
+cd "$(dirname "$0")" || exit 1
+
+[ -x .venv/bin/python ] || { echo "Нет .venv — сначала запустите ./setup_linux"; exit 1; }
+exec .venv/bin/python start.py

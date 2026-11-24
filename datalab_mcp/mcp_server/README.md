@@ -26,8 +26,8 @@ cp .env.example .env        # и вписать DATALAB_URL / DATALAB_TOKEN
 {
   "mcpServers": {
     "datalab": {
-      "command": "/abs/path/datlab_mcp/mcp_server/.venv/bin/python",
-      "args": ["/abs/path/datlab_mcp/mcp_server/main.py"],
+      "command": "/abs/path/datalab_mcp/mcp_server/.venv/bin/python",
+      "args": ["/abs/path/datalab_mcp/mcp_server/main.py"],
       "env": {
         "DATALAB_URL": "https://<datalab-host>/<port>",
         "DATALAB_TOKEN": "<JUPYTERHUB_API_TOKEN>",

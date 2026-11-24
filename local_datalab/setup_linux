@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Паттерн «setup-bash»: найти python >= 3.10 и запустить setup/setup.py.
+# Порядок: PATH -> pyenv -> стандартные пути -> ручной ввод.
+# Каждый кандидат проверяется РЕАЛЬНЫМ запуском: первый в PATH может
+# оказаться не тем (чужое окружение, старая версия).
+cd "$(dirname "$0")" || exit 1
+
+probe() {
+    "$1" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' 2>/dev/null
+}
+
+# 1) PATH
+CANDIDATES=$(command -v python3 2>/dev/null || true)
+
+# 2) pyenv (все версии, свежая раньше)
+CANDIDATES="$CANDIDATES
+$(ls -1 "$HOME"/.pyenv/versions/*/bin/python3 2>/dev/null | sort -Vr)"
+
+# 3) стандартные пути установки
+CANDIDATES="$CANDIDATES
+$(ls -1 /usr/local/bin/python3* /opt/python*/bin/python3 2>/dev/null | sort -Vr)"
+
+# выбор: первый кандидат, который реально запускается с нужной версией
+PY=""
+for C in $CANDIDATES; do
+    if probe "$C"; then PY="$C"; break; fi
+done
+
+# 4) вручную
+if [ -z "$PY" ]; then
+    read -rp "python >= 3.10 не найден автоматически. Введите путь к python (Enter — отмена): " PY
+    [ -n "$PY" ] && probe "$PY" || { echo "Не подходит."; exit 1; }
+fi
+
+echo "Python: $PY ($($PY --version 2>&1))"
+exec "$PY" setup/setup.py

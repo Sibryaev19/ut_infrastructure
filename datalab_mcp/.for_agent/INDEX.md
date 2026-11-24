@@ -1,4 +1,4 @@
-# INDEX — datlab_mcp
+# INDEX — datalab_mcp
 
 MCP-инструменты для работы агента с проектными областями на datalab (jupyterhub).
 Две части: `server/` (FastAPI на datalab) и `mcp_server/` (stdio MCP у агента).

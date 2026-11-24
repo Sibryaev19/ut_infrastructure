@@ -1,0 +1,30 @@
+# Параметры подстановки (${VAR}) берутся из .env в КОРНЕ проекта —
+# при запуске через -f compose ищет .env рядом с этим файлом, поэтому
+# setup/start всегда передают --env-file ../.env явно.
+name: local_datalab
+
+services:
+  jupyterhub:
+    build: ./jupyterhub
+    image: local_datalab-jupyterhub:latest
+    container_name: jupyterhub
+    restart: unless-stopped
+    ports:
+      - "${HUB_PORT}:8000"
+    volumes:
+      # DockerSpawner поднимает пользовательские контейнеры на хосте
+      - /var/run/docker.sock:/var/run/docker.sock
+      # persistent/ монтируется в hub по ТОМУ ЖЕ абсолютному пути, что на хосте:
+      # pre_spawn_hook создаёт папки пользователей изнутри hub — без этого
+      # они попадали бы в ФС контейнера hub, а не на хост
+      - ${HOST_BASE_DIR}/persistent:${HOST_BASE_DIR}/persistent
+    environment:
+      # путь проекта на хосте нужен jupyterhub_config.py для маунтов пользователей
+      - HOST_BASE_DIR=${HOST_BASE_DIR}
+      - NETWORK_NAME=${NETWORK_NAME}
+    networks:
+      - datalab
+
+networks:
+  datalab:
+    name: ${NETWORK_NAME}

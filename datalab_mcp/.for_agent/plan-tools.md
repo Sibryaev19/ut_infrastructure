@@ -117,7 +117,7 @@ LOG_LEVEL=info
 
 ## Layout
 ```
-datlab_mcp/
+datalab_mcp/
   server/            # всё, что уезжает на datalab
     app.py           # FastAPI, роуты, обработчики ошибок
     core/            # paths, limits, errors, spill
