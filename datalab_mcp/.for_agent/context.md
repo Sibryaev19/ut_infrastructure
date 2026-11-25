@@ -45,6 +45,41 @@ datalab. Всё реализовано; осталась проверка на �
 - `mcp_server/`: `mcp==2.3.0` (сервер — `MCPServer`, не `FastMCP`), httpx 0.28.1,
   python-dotenv. `ToolError` — из `mcp.server.mcpserver.exceptions`.
 
+## Установка на Windows (`mcp_server/setup.bat`)
+- `mcp_server/setup.bat` (ASCII, CRLF) делает только одно: ищет Python ≥ 3.10 и
+  запускает `setup\setup.py` из той же папки. Кандидаты: `%PYTHON%`,
+  `where python`, `py -0p`, реестр `PythonCore\ExecutablePath`,
+  `Program Files`/`LocalAppData`/`C:\Python3*`; версии проверяются запуском
+  кандидата, берётся максимальная.
+- `mcp_server/setup/setup.py` (только stdlib): `.env` (создаёт из `.env.example`)
+  → venv `mcp_server/.venv` → проверка пинов из `requirements.txt` по метаданным
+  venv (если всё стоит — pip не запускается) → при нехватке
+  `pip install -r mcp_server/requirements.txt` → проверка импортов → вызов
+  `setup/agent_config.py` → отчёт.
+- Ключи в `mcp_server/.env`: `PIP_USE_CORPORATE`, `PIP_INDEX_HOST`, `PIP_TOKEN`.
+  Корпоративный индекс: `https://token:<TOKEN>@<HOST>/repo/pypi/simple`
+  + `--trusted-host <HOST>`. Токен печатается в консоль как есть — решение
+  пользователя (2026-11-25); pip в своём логе всё равно маскирует.
+- `mcp_server/setup/agent_config.py` — прописывает stdio-сервер `datalab` в
+  найденных агентах: **gigacode** (`~/.gigacode/settings.json`:
+  `mcpServers.datalab` = {command, args} + `permissions.allow` «mcp__datalab») и
+  **ZCode** (`~/.zcode/cli/config.json`: `mcp.servers.datalab` =
+  {type: stdio, command, args}; схема строгая — только известные поля).
+  `env` в записи не задаём: mcp_server сам читает `.env` рядом с `main.py`.
+  Чужие ключи/серверы сохраняются, битый JSON не перезаписывается, бэкапов нет
+  (решение пользователя). Пути подменяются `GIGACODE_HOME`/`ZCODE_CONFIG` для
+  тестов; если агентов нет — это не ошибка. Тесты:
+  `.for_agent/test/test_agent_config.py` (темп-каталоги, 21 проверка).
+- Ловушки Windows, на которые уже наступили: не полагаться на `sort` в .bat
+  (в PATH от Git Bash лежит GNU sort); `%ProgramFiles(x86)%` не использовать
+  внутри for-блоков; `!` в echo съедается при delayed expansion; `for /f` по
+  файлу требует `usebackq`; кандидаты из реестра/`py -0p` бывают битыми
+  (на ноутбуке висит запись 3.12 без файлов, `py` отдаёт rc=101) — поэтому
+  каждый кандидат проверяется существованием и запуском.
+- Проверено: чистый и повторный прогон в режиме «интернет» (venv, пакеты,
+  отчёт), корпоративный режим — только сборка команды и коды ошибок
+  (репозиторий с ноутбука недоступен).
+
 ## Проверка
 - `server/`: на Windows 47 passed, 12 skipped (POSIX: bash, mode, symlink).
   На Ubuntu должен пройти полностью — это первое, что нужно сделать.
