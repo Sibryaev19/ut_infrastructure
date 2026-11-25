@@ -47,7 +47,8 @@ def test_list_dir_on_file_rejected(ctx):
     assert response.json()["error"]["code"] == "not_a_directory"
 
 
-def test_list_dir_depth_rejected(ctx):
+def test_list_dir_extra_fields_ignored(ctx):
+    """Старые клиенты могут слать лишние поля (например, depth) — это не ошибка."""
     response = ctx.call("list_dir", path=str(ctx.root), depth=2)
-    assert response.status_code == 400
-    assert "glob" in response.json()["error"]["hint"]
+    assert response.status_code == 200
+    assert "entries=" in response.json()["text"]

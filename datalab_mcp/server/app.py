@@ -36,7 +36,6 @@ logger = logging.getLogger("datalab.server")
 
 class ListDirArgs(BaseModel):
     path: str
-    depth: int = 1
 
 
 class ReadFileArgs(BaseModel):
@@ -147,7 +146,7 @@ def create_app(config: Config) -> FastAPI:
 
     @app.post("/tools/list_dir")
     async def tool_list_dir(args: ListDirArgs) -> dict[str, Any]:
-        return await call("list_dir", fs.list_dir, path=args.path, depth=args.depth)
+        return await call("list_dir", fs.list_dir, path=args.path)
 
     @app.post("/tools/read_file")
     async def tool_read_file(args: ReadFileArgs) -> dict[str, Any]:

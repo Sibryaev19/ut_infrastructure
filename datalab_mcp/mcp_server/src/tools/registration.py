@@ -54,8 +54,8 @@ def register_tools(mcp: MCPServer, handlers: Handlers) -> None:
         ),
         structured_output=False,
     )
-    async def list_dir(path: PathArg, depth: int = 1) -> str:
-        return await invoke(handlers.list_dir, path=path, depth=depth)
+    async def list_dir(path: PathArg) -> str:
+        return await invoke(handlers.list_dir, path=path)
 
     @mcp.tool(
         name="read_file",

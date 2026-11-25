@@ -35,7 +35,7 @@ WORKSPACES=... uvicorn app:build_default_app --factory --host 0.0.0.0 --port 999
 | GET | `/health` | — |
 | GET | `/info` | — |
 | POST | `/tools/workspace_info` | — |
-| POST | `/tools/list_dir` | `path`, `depth=1` |
+| POST | `/tools/list_dir` | `path` |
 | POST | `/tools/read_file` | `path`, `offset=1`, `limit=2000` |
 | POST | `/tools/write_file` | `path`, `content`, `expected_mtime_ms?` |
 | POST | `/tools/edit_file` | `path`, `old_string`, `new_string`, `replace_all=false`, `expected_mtime_ms?` |

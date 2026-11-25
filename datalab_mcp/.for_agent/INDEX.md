@@ -6,16 +6,21 @@ MCP-инструменты для работы агента с проектны�
 ## Текущее состояние
 - Обе части реализованы; шаг цикла 3 закрыт.
 - `server/`: 47 passed / 12 skipped на Windows (POSIX-тесты не гонялись).
-- `mcp_server/`: 34 passed; end-to-end по stdio против локального `server/` проверен.
-- На реальном datalab ничего ещё не запускалось.
+- `mcp_server/`: 34 passed; e2e по stdio проверен и против живого стенда.
+- СТЕНД (2026-11-25): server/ поднят в контейнере пользователя local_datalab
+  (`python start_server.py`, config из env.txt: WORKSPACE=/home/datalab/nfs/test,
+  порт 9999). Доступ с хоста — через прокси hub с токеном:
+  `http://<host>:8000/user/batsen/proxy/9999`.
+- E2E ПРОТИВ СТЕНДА ПРОЙДЕН (2026-11-25): 8/8 тулов по MCP-stdio
+  (скрипт `.for_agent/test/e2e_mcp_stand.py`). mcp_server подключён к ZCode
+  workspace-конфигом `funny_projects/.zcode/config.json` — в новых чатах
+  проекта тулзы datalab доступны автоматически.
 
 ## Следующее (в порядке)
-1. Прогнать `pytest` в `server/` на Ubuntu — закрыть 12 POSIX-тестов
-   (bash, сохранение mode, symlink-выход). Ошибки — сюда же.
-2. Развернуть `server/` на datalab: `WORKSPACES="name=/abs/path;..."`, `PORT`,
-   `python app.py`; проверить `curl` (пример в `server/README.md`).
-3. Подключить `mcp_server/` к агенту с реальным `DATALAB_URL`/`DATALAB_TOKEN`
-   (фрагмент конфига в `mcp_server/README.md`), проверить `workspace_info`.
+1. На реальном datalab ничего не запускалось — когда будет доступ.
+2. «Чистый агент» (новый чат) уже тестировал тула — отчёт принят, найденный
+   «баг» CRLF не воспроизвёлся; depth из list_dir выпилен (2026-11-25,
+   pytest: server 59 passed / Ubuntu без скипов, mcp 34 passed, e2e ALL PASS).
 
 ## Файлы
 - [context.md](context.md) — архитектура, решения, стек, что где лежит. **Читать первым.**
@@ -24,6 +29,9 @@ MCP-инструменты для работы агента с проектны�
   находки по SDK, итоги проверки (done).
 
 ## Правила работы
+- Код `server/` тестируется в копии внутри стенда
+  `../local_datalab/workspace/server`; любая доработка вносится в ОБА места
+  (копия + этот проект), оригинал — источник правды.
 - Перед предложениями читать context.md и нужный план; не пересматривать
   решения (абсолютные пути, без Roots, без job-режима) без нового решения пользователя.
 - Проверка кода — только на Ubuntu пользователя; на Windows прогоняется

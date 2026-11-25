@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 from dotenv import load_dotenv
@@ -41,7 +42,9 @@ class Settings:
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if env is None:
-        load_dotenv()
+        # .env ищем рядом с main.py (папка mcp_server), а не от cwd:
+        # клиент агента может запустить процесс откуда угодно
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
         env = os.environ
 
     url = (env.get("DATALAB_URL") or "").strip().rstrip("/")

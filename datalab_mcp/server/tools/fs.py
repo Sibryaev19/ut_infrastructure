@@ -358,13 +358,7 @@ def edit_file(
 
 # --- list_dir ---
 
-def list_dir(config: Config, path: str, depth: int = 1) -> dict[str, Any]:
-    if depth != 1:
-        raise ToolError(
-            "bad_request",
-            "depth > 1 is not supported",
-            "Для рекурсивного поиска используйте glob(pattern, path).",
-        )
+def list_dir(config: Config, path: str) -> dict[str, Any]:
     target = paths.require_dir(paths.resolve_read(path))
 
     entries: list[tuple[str, str, int, float, str]] = []

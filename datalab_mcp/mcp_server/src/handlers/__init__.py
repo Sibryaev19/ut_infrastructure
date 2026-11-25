@@ -22,8 +22,8 @@ class Handlers:
     async def workspace_info(self) -> str:
         return await self._call("workspace_info", {})
 
-    async def list_dir(self, *, path: str, depth: int = 1) -> str:
-        return await self._call("list_dir", {"path": path, "depth": depth})
+    async def list_dir(self, *, path: str) -> str:
+        return await self._call("list_dir", {"path": path})
 
     async def read_file(self, *, path: str, offset: int = 1, limit: int = 2000) -> str:
         return await self._call("read_file", {"path": path, "offset": offset, "limit": limit})
