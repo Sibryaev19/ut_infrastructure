@@ -1,0 +1,12 @@
+**/.ipynb_checkpoints/
+**/__pycache__/
+.venv/
+venv/
+.env
+env
+env.txt
+.gigacode/
+.idea/
+.vscode/
+.for_agent/
+.vs/

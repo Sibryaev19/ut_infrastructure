@@ -1,0 +1,12 @@
+# стенд разработки и тесты — вне git
+develop/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# локальная среда
+.env
