@@ -26,6 +26,9 @@
 - `develop/test/` — учебный эксперимент dep_demo (done): эталон механики
   (ленивые dep, available(), реестр, мини-фасад).
 - `develop/tools/folder_to_txt.py` — утилита переноса папки текстом.
+- `develop/distributed_task/` — **рабочая копия модуля** (легаси как есть) +
+  [.module_dev/INDEX.md](../../develop/distributed_task/.module_dev/INDEX.md).
+  Пока модуль в работе — детали только там, здесь не дублируются.
 - `../контекст.md` — исходное описание старого проекта (oarb_toolkit/datalab).
 
 ## Состояние
@@ -38,10 +41,12 @@
 Порядок работы с каждым модулем: разобрать код → оформить по
 [module-contract.md](module-contract.md) (META, available(), группы параметров,
 ленивые dep, ошибки-инструкции, tests/unit) → интегрировать (геттер — после
-того, как появится фасад). Первый кандидат — `gp_tools`
-(`source/oarb_toolkit/modules/database_modules/gp_tools/`), теперь ДВА класса:
-`GPConnector` + `GPTool` (файл `gp_tool.py` в `src/` — пользователь положил
-2026-11-27).
+того, как появится фасад). **Первый кандидат (указан пользователем 2026-11-27) —
+`distributed_task`** (`source/oarb_toolkit/distributed_task/`, 2 класса
+`DistTask` + `Podnet`, группа `distributed`); рабочая копия —
+`develop/distributed_task/`, план и заметки — в её `.module_dev/`.
+Далее — `gp_tools` (`source/oarb_toolkit/modules/database_modules/gp_tools/`),
+тоже ДВА класса: `GPConnector` + `GPTool`.
 Грехи к разбору: env-чтение `JUPYTERHUB_USER` в конструкторе GPConnector;
 нет META/available()/тестов; тяжёлые импорты (polars, pyarrow) на верхнем
 уровне gp_tool; БАГИ в `gp_tool.py insert_dataframe`: `split('.') > 1`
