@@ -107,7 +107,7 @@ universal_toolkit/            # репозиторий, ОДНОВРЕМЕННО
 └── контекст.md
 ```
 - Репозиторий = пакет: `__init__.py` в корне, весь репо импортируется целиком
-  (`from universal_toolkit import Toolkit`). Импорт: корень funny_projects
+  (`from universal_toolkit import Toolkit`). Импорт: корень ut_infrastructure
   в `sys.path` одной строкой.
 - `source/` и `develop/` — временные элементы разработки; по завершении удаляются,
   пакет остаётся чистым. Временность оправдывает их присутствие в дереве.

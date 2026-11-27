@@ -33,32 +33,10 @@ mcp_server (та же машина) → http://localhost:8000
   проектам при новой возможности. Теперь, когда есть имитация платформы,
   вернуться к web_proxy — реалистичный будущий сценарий.
 
-## Инфраструктурные соседи (решено 2026-11-28)
-- Greenplum и HDFS — часть имитации datalab, но живут ОТДЕЛЬНЫМИ модулями
-  (соседние папки в инфраструктурном монорепо, см. «Разделение монорепо»,
-  паттерн env/setup/start), НЕ внутри local_datalab. Пользователь поднимает
-  их руками; стенд работает и без них. У модулей свои .for_agent.
-- Связка: compose модулей дополнительно подключает сервисы к docker-сети
-  ${NETWORK_NAME} как external — контейнеры пользователей ходят к ним по
-  именам сервисов. Порты наружу не публикуются.
-- Данные модулей — в их data/ (gitignored), bind-маунты. UID образов
-  (postgres/hadoop) потребует chown при первом подъёме — ритуал setup'а.
-- В git модули идут: трекается только код/конфиги; data/, .env, .venv — в
-  их .gitignore. Секреты — в .env, в compose.yaml только ${VAR}.
-
-## Разделение монорепо (решено 2026-11-28)
-- Набор (local_datalab, datalab_mcp, universal_toolkit, datalab_data_transfer,
-  будущие gp/hdfs и далее — не только datalab) выделяется ПЕРЕИМЕНОВАНИЕМ
-  монорепо funny_projects → ut_infrastructure (история сохраняется целиком,
-  без filter-repo). img_translator, jira_analyzer, shit_downloader — выносятся
-  в новый отдельный репозиторий funny_projects (свежий git init, история
-  игрушек не переносится; описания игрушек для нового README — в истории:
-  git show HEAD:README.md).
-- GitHub: Sibryaev19/funny_projects переименовывается в
-  Sibryaev19/ut_infrastructure; имя funny_projects освобождается для нового
-  репо. Старый URL redirect'ит.
-- После переезда все абсолютные пути (в .env, .for_agent, README) правятся
-  на ~/Desktop/ROOT/Projects/datalab/...
+## Инфраструктурные соседи (2026-11-28, кратко)
+GP и HDFS — соседние модули в ut_infrastructure (НЕ здесь); стенд связывается
+с ними через external docker-сеть ${NETWORK_NAME}. Полные решения —
+в корневом .for_agent/context.md.
 
 ## Границы имитации (решено пользователем, 2026-11-24)
 - Авторизацию и проверку токена НЕ имитируем — на функционал не влияет.
