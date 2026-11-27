@@ -13,7 +13,7 @@ MCP-инструменты для работы агента с проектны�
   `http://<host>:8000/user/batsen/proxy/9999`.
 - E2E ПРОТИВ СТЕНДА ПРОЙДЕН (2026-11-25): 8/8 тулов по MCP-stdio
   (скрипт `.for_agent/test/e2e_mcp_stand.py`). mcp_server подключён к ZCode
-  workspace-конфигом `funny_projects/.zcode/config.json` — в новых чатах
+  workspace-конфигом `ut_infrastructure/.zcode/config.json` — в новых чатах
   проекта тулзы datalab доступны автоматически.
 
 - SETUP (2026-11-25): `mcp_server/setup.bat` + `mcp_server/setup/setup.py` готовы —

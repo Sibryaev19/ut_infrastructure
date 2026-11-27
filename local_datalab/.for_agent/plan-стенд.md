@@ -62,7 +62,7 @@ jupyter notebook через UI.
 - [ ] notebook и сервер работают одновременно в одном контейнере
 
 ## Открытые вопросы — закрыты
-- [x] Копия datalab_mcp: `/home/batsen/Desktop/ROOT/Projects/funny_projects/datalab_mcp`
+- [x] Копия datalab_mcp: `/home/batsen/Desktop/ROOT/Projects/ut_infrastructure/datalab_mcp`
       (остаётся справочным проектом для будущих шагов; зависимости server/:
       fastapi==0.165.0, uvicorn==0.54.0, anyio==4.16.0, pydantic==2.14.4).
 - [x] `server/` в контейнере поднимается руками из notebook; автозапуска нет.
